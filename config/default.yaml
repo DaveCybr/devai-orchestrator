@@ -1,0 +1,112 @@
+# Orchestrator - Multi-Agent Pentesting Framework
+# Primary LLM: DeepSeek, with OpenAI/Anthropic fallback
+# Python 3.11+
+
+orchestrator:
+  name: "Overseer"
+  version: "0.1.0"
+  workspace_dir: "./workspace"
+  max_concurrent_agents: 3
+  max_rounds_per_target: 50
+  cleanup_on_exit: true
+
+llm:
+  primary:
+    provider: "deepseek"
+    model: "deepseek-chat"
+    api_key_env: "DEEPSEEK_API_KEY"
+    base_url: "https://api.deepseek.com"
+    temperature: 0.3
+    max_tokens: 8192
+  fallback:
+    - provider: "openai"
+      model: "gpt-4o"
+      api_key_env: "OPENAI_API_KEY"
+    - provider: "anthropic"
+      model: "claude-sonnet-4-20250514"
+      api_key_env: "ANTHROPIC_API_KEY"
+
+blackboard:
+  max_facts: 10000
+  persist_path: "./workspace/state"
+  auto_sync_interval: 30
+
+agents:
+  recon:
+    enabled: true
+    tools: [nmap, subfinder, katana, httpx, crawl, js_recon, dir_enum]
+    max_targets: 100
+    timeout_per_target: 300
+  exploit:
+    enabled: true
+    vectors:
+      - sqli
+      - xss
+      - ssrf
+      - rce
+      - lfi
+      - idor
+      - auth_bypass
+      - file_upload
+      - nosqli
+      - graphql
+    max_payloads_per_vector: 50
+    timeout_per_test: 60
+  post_exploit:
+    enabled: true
+    actions: [pivot, privilege_escalate, data_exfil, cleanup]
+    cleanup_verified: true
+
+sandbox:
+  enabled: true
+  docker:
+    image: "python:3.11-slim"
+    network_disabled: false
+    memory_limit: "512m"
+    cpu_limit: 1.0
+    cap_drop: [ALL]
+    cap_add: []
+    read_only_rootfs: true
+    tmpfs: ["/tmp:size=100M"]
+    host_docker_internal: false
+    docker_socket: false
+    apparmor: "docker-default"
+    seccomp: "default"
+    user: "nobody"
+    workdir: "/workspace"
+  timeout: 60
+  max_output_chars: 16000
+
+tools:
+  local_exec:
+    enabled: true
+    max_lines: 200
+    blocked_patterns:
+      - "os\\.system"
+      - "subprocess\\.Popen"
+      - "shutil\\.rmtree"
+      - "__import__"
+    allowed_imports:
+      - json
+      - re
+      - base64
+      - hashlib
+      - itertools
+      - collections
+      - datetime
+      - struct
+      - textwrap
+
+integrations:
+  caido:
+    enabled: false
+    url: "http://127.0.0.1:48080"
+    proxy_port: 8080
+  burp:
+    enabled: false
+    url: "http://127.0.0.1:1337"
+    api_key_env: "BURP_API_KEY"
+  nmap:
+    enabled: true
+    binary: "nmap"
+    default_flags: ["-sV", "-T4"]

@@ -1,0 +1,54 @@
+name: idor
+description: Insecure Direct Object Reference - akses resource milik user lain
+phase: exploit
+priority: 7
+
+conditions:
+  triggers:
+    - Endpoint menggunakan numeric ID di URL (/user/123, /order/456)
+    - API menggunakan UUID tapi bisa ditebak (/api/invoice/INV-0001)
+    - Parameter di body POST untuk tentukan resource (/api/getUser, {"id": 123})
+    - Endpoint tidak validate ownership (hanya cek authentication)
+  not_recommended:
+    - UUID v4 random (bukan sequential)
+    - Ownership divalidasi di server (user_id diambil dari session, bukan parameter)
+    - Resource access via signed token
+
+payloads:
+  numeric_id:
+    - "123 -> 124 (increment)"
+    - "123 -> 122 (decrement)"
+    - "123 -> 1, 2, 3, 100, 1000 (enumeration)"
+  uuid_guess:
+    - "INV-000001 -> INV-000002"
+    - "user-1 -> user-2"
+  hashid_decode:
+    - "MTIz -> 123 (base64 decode parameter)"
+  mass_assignment:
+    - '{"id": 123, "user_id": 456} -> {"id": 123}'
+    - "/api/order?id=123 -> /api/order?id=456"
+
+tools:
+  primary: manual (curl/httpx + burp)
+  automated: [autorize, burp_authz]
+  manual: [curl, httpx, python, playwright]
+
+validation:
+  method: deterministic
+  rules:
+    - type: horizontal
+      method: "session A akses /user/456 (milik B) → dapat data B"
+    - type: vertical
+      method: "session user biasa akses /admin/users → sukses (200)"
+    - type: mass_assignment
+      method: "send extra field (is_admin=true) → field diterima"
+  reject_if:
+    - "Response 403/401 untuk semua ID (proper access control)"
+    - "Data yang sama antara user A dan B (shared/public resource)"
+    - "ID parameter diabaikan, pakai dari session (IDOR false positive)"
+
+examples:
+  - target: "/api/user/profile?id=123"
+    payload: "change id to 124"
+    indicator: "nama, email, alamat milik user 124 muncul"
+    tool: "curl"

